@@ -1,0 +1,452 @@
+<Window x:Class="AndboxOne.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ANDBOXONE // 离线安卓虚拟机控制中枢" Height="860" Width="1560"
+        MinHeight="640" MinWidth="1280"
+        Background="{StaticResource Bg0}" FontFamily="{StaticResource MonoFont}"
+        WindowStartupLocation="CenterScreen" AllowDrop="True"
+        Drop="Window_Drop" DragOver="Window_DragOver" DragLeave="Window_DragLeave">
+
+    <Window.Resources>
+
+        <!-- 状态 LED 颜色 -->
+        <SolidColorBrush x:Key="LedStopped" Color="#4A554A"/>
+        <SolidColorBrush x:Key="LedBusy" Color="#FFB454"/>
+        <SolidColorBrush x:Key="LedOnline" Color="#39E639"/>
+        <SolidColorBrush x:Key="LedError" Color="#FF5555"/>
+
+        <!-- 虚拟机卡片 -->
+        <DataTemplate x:Key="VmCardTemplate">
+            <Border x:Name="CardBd" Background="{StaticResource Bg1}" BorderBrush="{StaticResource Border}"
+                    BorderThickness="1" CornerRadius="3" Margin="0,0,0,6" Padding="10,8" Cursor="Hand"
+                    Tag="{Binding}">
+                <Border.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="删除该虚拟机" Tag="{Binding}" Click="MenuDeleteVm_Click"/>
+                    </ContextMenu>
+                </Border.ContextMenu>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Ellipse x:Name="Led" Grid.Row="0" Grid.Column="0" Width="9" Height="9"
+                             Fill="{StaticResource LedStopped}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal">
+                        <TextBlock Text="{Binding AvdName}" FontSize="13" FontWeight="Bold" Foreground="{StaticResource TextPrimary}"/>
+                    </StackPanel>
+                    <CheckBox Grid.Row="0" Grid.Column="2" IsChecked="{Binding IsChecked, Mode=TwoWay}"
+                              ToolTip="勾选后可用于批量操作" VerticalAlignment="Top"/>
+
+                    <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Profile.Model}"
+                               Style="{StaticResource DimText}" Margin="17,3,0,0"/>
+                    <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding StateText}" FontSize="11"
+                               Foreground="{StaticResource TextDim}" Margin="17,3,0,0"/>
+
+                    <Grid Grid.Row="3" Grid.ColumnSpan="2" Margin="17,6,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="0,0,4,0">
+                            <TextBlock Style="{StaticResource DimText}" FontSize="10">
+                                <Run Text="CPU "/><Run Text="{Binding CpuText, Mode=OneWay}"/>
+                            </TextBlock>
+                            <ProgressBar Maximum="100" Value="{Binding CpuPercent, Mode=OneWay}" Margin="0,2,0,0"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="4,0,0,0">
+                            <TextBlock Style="{StaticResource DimText}" FontSize="10">
+                                <Run Text="MEM "/><Run Text="{Binding MemText, Mode=OneWay}"/>
+                            </TextBlock>
+                            <ProgressBar Maximum="16384" Value="{Binding MemMb, Mode=OneWay}" Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </Border>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding State}" Value="Online">
+                    <Setter TargetName="Led" Property="Fill" Value="{StaticResource LedOnline}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding State}" Value="Starting">
+                    <Setter TargetName="Led" Property="Fill" Value="{StaticResource LedBusy}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding State}" Value="Booting">
+                    <Setter TargetName="Led" Property="Fill" Value="{StaticResource LedBusy}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding State}" Value="Stopping">
+                    <Setter TargetName="Led" Property="Fill" Value="{StaticResource LedBusy}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding State}" Value="Error">
+                    <Setter TargetName="Led" Property="Fill" Value="{StaticResource LedError}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Rooted}" Value="True">
+                    <Setter TargetName="Led" Property="Stroke" Value="{StaticResource Cyan}"/>
+                    <Setter TargetName="Led" Property="StrokeThickness" Value="2"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="290" MinWidth="240"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="360" MinWidth="300"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- ================= 顶栏 ================= -->
+        <Border Grid.Row="0" Grid.ColumnSpan="5" Background="{StaticResource Bg1}"
+                BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1" Padding="12,8">
+            <DockPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                    <Ellipse x:Name="EnvLed" Width="10" Height="10" Fill="{StaticResource LedBusy}" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="EnvStatusText" Text="ENV 自检中…" Margin="10,0,18,0" VerticalAlignment="Center"
+                               FontSize="12" Foreground="{StaticResource TextDim}"/>
+                    <TextBlock Text="ANDBOXONE" FontSize="16" FontWeight="Bold" Foreground="{StaticResource Accent}"
+                               VerticalAlignment="Center"/>
+                    <TextBlock Text=" v1.0 // OFFLINE ANDROID CONTROL HUB · 无账号 · 无广告 · 无遥测"
+                               FontSize="11" Foreground="{StaticResource TextFaint}" VerticalAlignment="Center" Margin="8,2,0,0"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
+                    <Button x:Name="BtnCreateVm" Content="＋ 新建虚拟机" Click="BtnCreateVm_Click"/>
+                    <Button x:Name="BtnRefresh" Content="⟳ 刷新" Margin="8,0,0,0" Click="BtnRefresh_Click"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- ================= 左栏：多开管理器 ================= -->
+        <Border Grid.Row="1" Grid.Column="0" Background="{StaticResource Bg1}" BorderBrush="{StaticResource Border}"
+                BorderThickness="0,0,1,0" Padding="10">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <DockPanel Grid.Row="0" Margin="0,0,0,8">
+                    <TextBlock DockPanel.Dock="Left" Text="▣ 多开管理器" Style="{StaticResource SectionHeader}"/>
+                    <TextBlock x:Name="VmCountText" DockPanel.Dock="Right" HorizontalAlignment="Right"
+                               Style="{StaticResource DimText}" Text="0 实例"/>
+                </DockPanel>
+
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl x:Name="VmList" ItemsSource="{Binding}" ItemTemplate="{StaticResource VmCardTemplate}"/>
+                </ScrollViewer>
+
+                <StackPanel Grid.Row="2" Margin="0,8,0,0">
+                    <TextBlock Style="{StaticResource DimText}" Text="批量操作（作用于勾选项；未勾选则作用于全部）"/>
+                    <Grid Margin="0,6,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="BtnStartAll" Grid.Column="0" Content="全部启动" Margin="0,0,4,0" Click="BtnStartAll_Click"/>
+                        <Button x:Name="BtnStopAll" Grid.Column="1" Content="全部关闭" Margin="4,0,4,0" Click="BtnStopAll_Click"/>
+                        <Button x:Name="BtnRootAll" Grid.Column="2" Content="全部 Root" Margin="4,0,0,0" Click="BtnRootAll_Click"/>
+                    </Grid>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <GridSplitter Grid.Row="1" Grid.Column="1" Width="4" HorizontalAlignment="Stretch"
+                      Background="Transparent" ShowsPreview="False"/>
+
+        <!-- ================= 中栏：核心操作区 ================= -->
+        <Border Grid.Row="1" Grid.Column="2" Padding="10">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- 操作行 -->
+                <StackPanel Grid.Row="0">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Left" Style="{StaticResource SectionHeader}">
+                            <Run Text="▣ 核心操作"/>
+                            <Run x:Name="ActiveVmRun" Text="（未选中实例）" Foreground="{StaticResource TextFaint}" FontWeight="Normal"/>
+                        </TextBlock>
+                    </DockPanel>
+                    <WrapPanel>
+                        <Button x:Name="BtnStart" Content="▶ 启动" Click="BtnStart_Click"/>
+                        <Button x:Name="BtnStop" Content="■ 关闭" Margin="6,0,0,0" Click="BtnStop_Click"/>
+                        <Button x:Name="BtnRoot" Content="⚡ Root" Margin="6,0,0,0" Click="BtnRoot_Click"/>
+                        <Button x:Name="BtnInstallApk" Content="⇩ 安装 APK" Margin="6,0,0,0" Click="BtnInstallApk_Click"/>
+                        <Button x:Name="BtnDiagnose" Content="⇄ 网络诊断" Margin="6,0,0,0" Click="BtnDiagnose_Click"/>
+                        <Button x:Name="BtnTileWindows" Content="▣ 窗口归位" Margin="6,0,0,0" Click="BtnTileWindows_Click"
+                                ToolTip="把所有跑出屏幕/找不到的模拟器窗口拉回屏幕内并层叠排布"/>
+                        <Button x:Name="BtnClearLog" Content="清空日志" Margin="6,0,0,0" Click="BtnClearLog_Click"/>
+                    </WrapPanel>
+                    <TextBlock x:Name="HintText" Style="{StaticResource DimText}" Margin="0,6,0,0"
+                               Text="提示：可直接把 .apk 拖入本窗口安装到当前选中的虚拟机"/>
+                </StackPanel>
+
+                <!-- 日志区 -->
+                <Border Grid.Row="1" Margin="0,10,0,0" BorderBrush="{StaticResource Border}" BorderThickness="1"
+                        Background="{StaticResource Bg0}" CornerRadius="2">
+                    <RichTextBox x:Name="LogBox" IsReadOnly="True" VerticalScrollBarVisibility="Auto"
+                                 HorizontalScrollBarVisibility="Auto" Background="Transparent"
+                                 BorderThickness="0" FontFamily="{StaticResource MonoFont}" FontSize="12">
+                        <RichTextBox.Document>
+                            <FlowDocument PagePadding="6">
+                                <FlowDocument.Resources>
+                                    <Style TargetType="Paragraph">
+                                        <Setter Property="Margin" Value="0,0.5"/>
+                                    </Style>
+                                </FlowDocument.Resources>
+                            </FlowDocument>
+                        </RichTextBox.Document>
+                    </RichTextBox>
+                </Border>
+            </Grid>
+        </Border>
+
+        <GridSplitter Grid.Row="1" Grid.Column="3" Width="4" HorizontalAlignment="Stretch"
+                      Background="Transparent" ShowsPreview="False"/>
+
+        <!-- ================= 右栏：高级配置面板 ================= -->
+        <Border Grid.Row="1" Grid.Column="4" Background="{StaticResource Bg1}" BorderBrush="{StaticResource Border}"
+                BorderThickness="1,0,0,0" Padding="10">
+            <TabControl>
+                <!-- ===== Tab1 设备配置 ===== -->
+                <TabItem Header="设备配置">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+
+                            <GroupBox Header="▸ 内置预设 / 当前机型">
+                                <StackPanel>
+                                    <ComboBox x:Name="PresetCombo" MinHeight="30"/>
+                                    <TextBlock x:Name="ProfileSummary" Style="{StaticResource DimText}" Margin="0,6,0,0"
+                                               TextWrapping="Wrap" Text="—"/>
+                                </StackPanel>
+                            </GroupBox>
+
+                            <GroupBox Header="▸ 自定义机型">
+                                <StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="58"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Grid.Row="0" Grid.Column="0" Text="设备名" Style="{StaticResource DimText}" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="ProfileNameBox" Grid.Row="0" Grid.Column="1" Margin="0,2,0,4"/>
+                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="厂商" Style="{StaticResource DimText}" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="ProfileVendorBox" Grid.Row="1" Grid.Column="1" Margin="0,2,0,4"/>
+                                        <TextBlock Grid.Row="2" Grid.Column="0" Text="型号" Style="{StaticResource DimText}" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="ProfileModelBox" Grid.Row="2" Grid.Column="1" Margin="0,2,0,4"/>
+                                    </Grid>
+
+                                    <TextBlock Text="分辨率（拖拽调整）" Style="{StaticResource DimText}" Margin="0,6,0,2"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="46"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="52"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="宽" Style="{StaticResource DimText}" VerticalAlignment="Center"/>
+                                        <Slider x:Name="WidthSlider" Grid.Column="1" Minimum="480" Maximum="2160"
+                                                TickFrequency="8" IsSnapToTickEnabled="True"
+                                                ValueChanged="WidthSlider_ValueChanged" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="WidthBox" Grid.Column="2" Margin="6,0,0,0" TextChanged="ResBox_TextChanged"/>
+                                    </Grid>
+                                    <Grid Margin="0,4,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="46"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="52"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="高" Style="{StaticResource DimText}" VerticalAlignment="Center"/>
+                                        <Slider x:Name="HeightSlider" Grid.Column="1" Minimum="854" Maximum="3840"
+                                                TickFrequency="8" IsSnapToTickEnabled="True"
+                                                ValueChanged="HeightSlider_ValueChanged" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="HeightBox" Grid.Column="2" Margin="6,0,0,0" TextChanged="ResBox_TextChanged"/>
+                                    </Grid>
+
+                                    <WrapPanel Margin="0,8,0,0">
+                                        <TextBlock Text="比例:" Style="{StaticResource DimText}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                        <Button x:Name="Ratio169" Content="16:9" Padding="6,2" Click="Ratio_Click" Tag="16:9"/>
+                                        <Button x:Name="Ratio189" Content="18:9" Padding="6,2" Margin="4,0,0,0" Click="Ratio_Click" Tag="18:9"/>
+                                        <Button x:Name="Ratio195" Content="19.5:9" Padding="6,2" Margin="4,0,0,0" Click="Ratio_Click" Tag="19.5:9"/>
+                                        <Button x:Name="Ratio209" Content="20:9" Padding="6,2" Margin="4,0,0,0" Click="Ratio_Click" Tag="20:9"/>
+                                    </WrapPanel>
+
+                                    <!-- 实时预览 -->
+                                    <Border Background="{StaticResource Bg0}" BorderBrush="{StaticResource Border}"
+                                            BorderThickness="1" CornerRadius="2" Height="150" Margin="0,10,0,0"
+                                            ClipToBounds="True">
+                                        <Grid>
+                                            <Border x:Name="PreviewRect" Background="#12240F" BorderBrush="{StaticResource Accent}"
+                                                    BorderThickness="1" CornerRadius="4" HorizontalAlignment="Center"
+                                                    VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="PreviewText" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                       FontSize="10" Foreground="{StaticResource Accent}" Text="—"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <Grid Margin="0,10,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="46"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="52"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="DPI" Style="{StaticResource DimText}" VerticalAlignment="Center"/>
+                                        <ComboBox x:Name="DpiCombo" Grid.Column="1" Grid.ColumnSpan="2" MinHeight="30"/>
+                                    </Grid>
+                                    <Grid Margin="0,6,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="46"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="52"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="CPU" Style="{StaticResource DimText}" VerticalAlignment="Center"/>
+                                        <Slider x:Name="CpuSlider" Grid.Column="1" Minimum="1" Maximum="16"
+                                                ValueChanged="CpuSlider_ValueChanged" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="CpuBox" Grid.Column="2" Margin="6,0,0,0" TextChanged="ResBox_TextChanged"/>
+                                    </Grid>
+                                    <Grid Margin="0,6,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="46"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="52"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="内存" Style="{StaticResource DimText}" VerticalAlignment="Center"/>
+                                        <ComboBox x:Name="RamCombo" Grid.Column="1" Grid.ColumnSpan="2" MinHeight="30"/>
+                                    </Grid>
+                                    <Grid Margin="0,6,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="46"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="52"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="GPU" Style="{StaticResource DimText}" VerticalAlignment="Center"/>
+                                        <ComboBox x:Name="GpuCombo" Grid.Column="1" Grid.ColumnSpan="2" MinHeight="30"/>
+                                    </Grid>
+
+                                    <CheckBox x:Name="HeadlessCheck" Content="无窗口启动（-no-window）" Margin="0,8,0,0"/>
+                                    <CheckBox x:Name="NoSnapshotCheck" Content="禁用快照，每次冷启动（-no-snapshot）" Margin="0,6,0,0"/>
+                                </StackPanel>
+                            </GroupBox>
+
+                            <GroupBox Header="▸ 游戏适配（兼容模式）">
+                                <StackPanel>
+                                    <ComboBox x:Name="GameTuningCombo" MinHeight="30"/>
+                                    <TextBlock x:Name="GameTuningDesc" Style="{StaticResource DimText}" TextWrapping="Wrap" Margin="0,6,0,0" Text="—"/>
+                                    <Button x:Name="BtnApplyTuning" Content="应用兼容模式 →" Margin="0,8,0,0" Click="BtnApplyTuning_Click"/>
+                                </StackPanel>
+                            </GroupBox>
+
+                            <WrapPanel>
+                                <Button x:Name="BtnApplyProfile" Content="✔ 应用到此虚拟机" Click="BtnApplyProfile_Click"/>
+                                <Button x:Name="BtnExportJson" Content="导出 JSON" Margin="6,0,0,0" Click="BtnExportJson_Click"/>
+                                <Button x:Name="BtnImportJson" Content="导入 JSON" Margin="6,0,0,0" Click="BtnImportJson_Click"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <!-- ===== Tab2 网络配置 ===== -->
+                <TabItem Header="网络">
+                    <StackPanel>
+                        <GroupBox Header="▸ 网络策略">
+                            <StackPanel>
+                                <RadioButton x:Name="NetNatRadio" Content="NAT 模式（默认 · -netdelay none -netspeed full）"
+                                             GroupName="netmode" IsChecked="True" Margin="0,2,0,4"/>
+                                <RadioButton x:Name="NetBridgeRadio" Content="桥接模式（独立 IP · 实验性，需 TAP 适配器）"
+                                             GroupName="netmode" Margin="0,2,0,8"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="110"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="TAP 适配器名" Style="{StaticResource DimText}" VerticalAlignment="Center"/>
+                                    <TextBox x:Name="BridgeAdapterBox" Grid.Column="1" Text="tap0"/>
+                                </Grid>
+                                <TextBlock Style="{StaticResource DimText}" TextWrapping="Wrap" Margin="0,8,0,0"
+                                           Text="桥接模式通过 -qemu -net tap 透传实现。需宿主机已安装 OpenVPN TAP 适配器；模拟器官方未正式支持，异常时请切回 NAT。"/>
+                                <TextBlock Style="{StaticResource DimText}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                           Text="网络模式在虚拟机【下次启动】时生效。"/>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <GroupBox Header="▸ 网络诊断（ping 8.8.8.8）">
+                            <StackPanel>
+                                <TextBlock x:Name="NetDiagSummary" Style="{StaticResource DimText}" Text="尚未诊断" Margin="0,0,0,6"/>
+                                <Button x:Name="BtnDiagnose2" Content="⇄ 对当前实例执行诊断" Click="BtnDiagnose_Click" HorizontalAlignment="Left"/>
+                                <TextBox x:Name="NetDiagDetail" Height="180" Margin="0,8,0,0" TextWrapping="Wrap"
+                                         AcceptsReturn="True" IsReadOnly="True" VerticalScrollBarVisibility="Auto"
+                                         VerticalContentAlignment="Top" FontSize="11" Text=""/>
+                            </StackPanel>
+                        </GroupBox>
+                    </StackPanel>
+                </TabItem>
+
+                <!-- ===== Tab3 安装报告 ===== -->
+                <TabItem Header="安装报告">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock x:Name="ReportMetaText" Style="{StaticResource DimText}" Text="安装 APK 后自动生成报告"
+                                   TextWrapping="Wrap" Margin="0,0,0,6"/>
+                        <Border Grid.Row="1" BorderBrush="{StaticResource Border}" BorderThickness="1" Background="{StaticResource Bg0}">
+                            <WebBrowser x:Name="ReportBrowser"/>
+                        </Border>
+                        <WrapPanel Grid.Row="2" Margin="0,8,0,0">
+                            <Button x:Name="BtnCopyReport" Content="复制报告" Click="BtnCopyReport_Click"/>
+                            <Button x:Name="BtnExportReport" Content="导出为 HTML" Margin="6,0,0,0" Click="BtnExportReport_Click"/>
+                            <Button x:Name="BtnMakeShortcut" Content="生成桌面快捷方式" Margin="6,0,0,0" Click="BtnMakeShortcut_Click"/>
+                        </WrapPanel>
+                    </Grid>
+                </TabItem>
+            </TabControl>
+        </Border>
+
+        <!-- ================= 状态栏 ================= -->
+        <Border Grid.Row="2" Grid.ColumnSpan="5" Background="{StaticResource Bg1}"
+                BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0" Padding="12,4">
+            <DockPanel>
+                <TextBlock x:Name="StatusSdk" DockPanel.Dock="Left" Style="{StaticResource DimText}" Text="SDK: …"/>
+                <TextBlock x:Name="StatusAdb" DockPanel.Dock="Left" Style="{StaticResource DimText}" Margin="16,0,0,0" Text="ADB: …"/>
+                <TextBlock x:Name="StatusRight" DockPanel.Dock="Right" HorizontalAlignment="Right" Style="{StaticResource DimText}"
+                           Text="纯本地运行 · 不上传任何数据 · 仅用于合法测试与开发"/>
+            </DockPanel>
+        </Border>
+
+        <!-- ================= 拖拽覆盖层 ================= -->
+        <Border x:Name="DragOverlay" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="5"
+                Background="#E00A0C0A" BorderBrush="{StaticResource Accent}" BorderThickness="2"
+                CornerRadius="4" Margin="8" Visibility="Collapsed" IsHitTestVisible="False">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                <TextBlock Text="⇩ 松手安装 APK" FontSize="26" FontWeight="Bold"
+                           Foreground="{StaticResource Accent}" HorizontalAlignment="Center"/>
+                <TextBlock x:Name="DragTargetText" FontSize="13" Foreground="{StaticResource TextDim}"
+                           HorizontalAlignment="Center" Margin="0,10,0,0"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

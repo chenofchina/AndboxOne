@@ -1,0 +1,68 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+  ============================================================================
+   AndboxOne —— 离线打包的极客级安卓虚拟机控制中枢
+  ============================================================================
+
+   核心哲学（离线即正义）：
+   AndboxOne 是一个自带全套 Android 虚拟化引擎的离线模拟器控制中枢。
+   用户只需要下载一个安装包，双击即可运行——无需安装 Android Studio、
+   无需配置环境变量、无需在线下载镜像。所有 Android SDK、系统镜像、
+   ADB、Emulator 引擎，全部随主程序通过 RuntimeSdk 文件夹离线打包发布。
+
+   同时，AndboxOne 拒绝任何账号系统、广告推送、云同步功能，
+   只做纯粹的本地极客工具。不收集任何数据，不做任何联网上报。
+
+   【法律风险边界】本工具不做任何"反检测"和"设备特征伪装"，
+   不提供任何绕过反作弊或风控系统的功能。仅用于合法的应用测试
+   与开发场景。用户应遵守当地法律法规。
+  ============================================================================ -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>AndboxOne</RootNamespace>
+    <AssemblyName>AndboxOne</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PlatformTarget>x64</PlatformTarget>
+    <Version>1.0.0</Version>
+    <FileVersion>1.0.0.0</FileVersion>
+    <InformationalVersion>AndboxOne 1.0.0 // Offline Android Control Hub</InformationalVersion>
+    <Product>AndboxOne</Product>
+    <Authors>AndboxOne Project</Authors>
+    <Description>离线打包的极客级安卓虚拟机控制中枢（自带 Android 虚拟化引擎，无需安装 Android Studio）</Description>
+    <!-- 依赖框架自带的资源，减小发布体积；全部功能只用 BCL，零第三方 NuGet 依赖 -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- 关键：自包含发布时也保持 RuntimeSdk 为松散文件，绝不嵌入 exe -->
+    <IncludeAllContentForSelfExtract>false</IncludeAllContentForSelfExtract>
+  </PropertyGroup>
+
+  <!--
+  ============================================================================
+   离线 SDK 打包策略（本项目的灵魂配置）
+  ============================================================================
+   开发时，将以下文件夹全部放入项目根目录的 RuntimeSdk 文件夹中：
+
+     RuntimeSdk\emulator\                                    （Android Emulator 引擎，含 emulator.exe）
+     RuntimeSdk\platform-tools\                              （adb.exe、fastboot.exe、AdbWinApi.dll 等）
+     RuntimeSdk\system-images\android-30\google_apis\x86_64\ （Android 11 系统镜像）
+
+   通过下面的 Content 通配符，整个 RuntimeSdk 会被原样复制到：
+     bin\...\RuntimeSdk\       （CopyToOutputDirectory）
+     publish\RuntimeSdk\       （CopyToPublishDirectory）
+
+   程序运行时通过 Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "RuntimeSdk")
+   定位 SDK，并自动设置 ANDROID_HOME / ANDROID_SDK_ROOT 等环境变量。
+   （详见 Core\EnvironmentManager.cs）
+  ============================================================================ -->
+  <ItemGroup>
+    <Content Include="RuntimeSdk\**\*"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
